@@ -1,8 +1,10 @@
-use cosmwasm_std::{CheckedFromRatioError, DivideByZeroError, OverflowError, StdError};
+use cosmwasm_std::{
+    CheckedFromRatioError, DecimalRangeExceeded, DivideByZeroError, OverflowError, StdError,
+};
 use cw_utils::ParseReplyError;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
@@ -18,6 +20,9 @@ pub enum ContractError {
 
     #[error(transparent)]
     CheckedFromRatioError(#[from] CheckedFromRatioError),
+
+    #[error(transparent)]
+    DecimalRangeExceeded(#[from] DecimalRangeExceeded),
 
     #[error("Unauthorized")]
     Unauthorized {},

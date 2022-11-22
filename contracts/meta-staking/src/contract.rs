@@ -105,7 +105,7 @@ mod execute {
         let validator_rewards = match validator_rewards {
             Some(val_rewards) => val_rewards,
             None => {
-                let val = ValidatorRewards::new();
+                let val = ValidatorRewards::default();
 
                 VALIDATORS_REWARDS.save(deps.storage, &validator, &val)?;
                 val
@@ -159,7 +159,12 @@ mod execute {
 
         let validator_rewards = VALIDATORS_REWARDS.load(deps.storage, &validator)?;
 
-        let delegations = VALIDATORS_BY_CONSUMER.load(deps.storage, (&info.sender, &validator))?;
+        // TODO: We check if we have delegation before we check if we have consumer
+        // If we don't consumer is not registered, we shouldn't have delegation by default
+        // so we return a wrong error to the problem in that case.
+        let delegations = VALIDATORS_BY_CONSUMER
+            .may_load(deps.storage, (&info.sender, &validator))?
+            .ok_or(ContractError::NoDelegationsForValidator {})?;
 
         // Increase the amount of available funds for that consumer
         CONSUMERS.update(
@@ -199,12 +204,12 @@ mod execute {
         Ok(Response::default().add_message(msg))
     }
 
-    enum Method {
+    pub(crate) enum Method {
         Add,
         Sub,
     }
 
-    fn update_delegations<'a>(
+    pub(crate) fn update_delegations<'a>(
         deps: DepsMut<'a>,
         info: MessageInfo,
         validator: &str,
@@ -327,7 +332,7 @@ mod execute {
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::AllDelegations { consumer } => {
-            to_binary(&query::all_delegations(deps, consumer)?)
+            query::all_delegations(deps, consumer)
         }
         QueryMsg::AllValidators {
             consumer,
@@ -344,7 +349,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 mod query {
-    use crate::msg::{AllDelegationsResponse, Delegation};
+    use crate::msg::{Delegation};
     use cosmwasm_std::{to_binary, Addr, Order};
     use cw_storage_plus::Bound;
     use cw_utils::maybe_addr;
@@ -353,7 +358,7 @@ mod query {
 
     use super::*;
 
-    pub fn all_delegations(deps: Deps, consumer: String) -> StdResult<AllDelegationsResponse> {
+    pub fn all_delegations(deps: Deps, consumer: String) -> StdResult<Binary> {
         let consumer = deps.api.addr_validate(&consumer)?;
         let delegations = VALIDATORS_BY_CONSUMER
             .prefix(&consumer)
@@ -366,7 +371,7 @@ mod query {
                 })
             })
             .collect::<StdResult<Vec<_>>>()?;
-        Ok(AllDelegationsResponse { delegations })
+            to_binary(&delegations)
     }
 
     pub fn all_validators(
@@ -523,24 +528,5 @@ mod reply {
         println!("{:?}", res);
 
         Ok(Response::default())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cosmwasm_std::coins;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-
-    #[test]
-    fn proper_initialization() {
-        let mut deps = mock_dependencies();
-
-        let msg = InstantiateMsg {};
-        let info = mock_info("creator", &coins(1000, "earth"));
-
-        // we can just call .unwrap() to assert this was a success
-        let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-        assert_eq!(0, res.messages.len());
     }
 }
